@@ -1,1 +1,212 @@
- Task Manager with User Authentication
+import os
+import json
+import hashlib
+import csv
+from datetime import datetime
+
+# Utility functions for hashing passwords
+def hash_password(password):
+    return hashlib.sha256(password.encode()).hexdigest()
+
+# Paths for storing user data, tasks, and expenses
+USER_FILE = "users.json"
+TASKS_FILE = "tasks.json"
+EXPENSES_FILE = "expenses.csv"
+
+# Initialize storage files if they don't exist
+def initialize_files():
+    if not os.path.exists(USER_FILE):
+        with open(USER_FILE, "w") as file:
+            json.dump({}, file)
+    if not os.path.exists(TASKS_FILE):
+        with open(TASKS_FILE, "w") as file:
+            json.dump({}, file)
+    if not os.path.exists(EXPENSES_FILE):
+        with open(EXPENSES_FILE, "w", newline="") as file:
+            writer = csv.writer(file)
+            writer.writerow(["Date", "Category", "Amount", "Description"])
+
+# Load data from JSON files
+def load_data(file_path):
+    with open(file_path, "r") as file:
+        return json.load(file)
+
+# Save data to JSON files
+def save_data(file_path, data):
+    with open(file_path, "w") as file:
+        json.dump(data, file, indent=4)
+
+# User authentication functions
+def register():
+    users = load_data(USER_FILE)
+    username = input("Enter a username: ")
+    if username in users:
+        print("Username already exists. Try logging in.")
+        return None
+    password = input("Enter a password: ")
+    users[username] = hash_password(password)
+    save_data(USER_FILE, users)
+    print("Registration successful. You can now log in.")
+
+def login():
+    users = load_data(USER_FILE)
+    username = input("Enter your username: ")
+    if username not in users:
+        print("Username not found. Please register.")
+        return None
+    password = input("Enter your password: ")
+    if users[username] == hash_password(password):
+        print("Login successful.")
+        return username
+    else:
+        print("Incorrect password.")
+        return None
+
+# Task management functions
+def add_task(username):
+    tasks = load_data(TASKS_FILE)
+    task = input("Enter the task description: ")
+    task_id = len(tasks.get(username, [])) + 1
+    if username not in tasks:
+        tasks[username] = []
+    tasks[username].append({"id": task_id, "task": task, "completed": False})
+    save_data(TASKS_FILE, tasks)
+    print("Task added successfully.")
+
+def view_tasks(username):
+    tasks = load_data(TASKS_FILE)
+    if username not in tasks or not tasks[username]:
+        print("No tasks found.")
+        return
+    print("Your Tasks:")
+    for task in tasks[username]:
+        status = "[Completed]" if task["completed"] else "[Pending]"
+        print(f"{task['id']}. {task['task']} {status}")
+
+def mark_task_completed(username):
+    tasks = load_data(TASKS_FILE)
+    if username not in tasks or not tasks[username]:
+        print("No tasks found.")
+        return
+    view_tasks(username)
+    try:
+        task_id = int(input("Enter the task ID to mark as completed: "))
+        for task in tasks[username]:
+            if task["id"] == task_id:
+                task["completed"] = True
+                save_data(TASKS_FILE, tasks)
+                print("Task marked as completed.")
+                return
+        print("Invalid task ID.")
+    except ValueError:
+        print("Invalid input. Please enter a number.")
+
+def delete_task(username):
+    tasks = load_data(TASKS_FILE)
+    if username not in tasks or not tasks[username]:
+        print("No tasks found.")
+        return
+    view_tasks(username)
+    try:
+        task_id = int(input("Enter the task ID to delete: "))
+        tasks[username] = [task for task in tasks[username] if task["id"] != task_id]
+        save_data(TASKS_FILE, tasks)
+        print("Task deleted successfully.")
+    except ValueError:
+        print("Invalid input. Please enter a number.")
+
+# Budget tracking functions
+def set_budget():
+    try:
+        budget = float(input("Enter your monthly budget: "))
+        return budget
+    except ValueError:
+        print("Invalid input. Please enter a valid number.")
+        return 0
+
+def add_expense():
+    date = datetime.now().strftime("%Y-%m-%d")
+    category = input("Enter the expense category: ")
+    try:
+        amount = float(input("Enter the expense amount: "))
+    except ValueError:
+        print("Invalid amount. Expense not added.")
+        return
+    description = input("Enter a description for the expense: ")
+    with open(EXPENSES_FILE, "a", newline="") as file:
+        writer = csv.writer(file)
+        writer.writerow([date, category, amount, description])
+    print("Expense added successfully.")
+
+def view_expenses():
+    if not os.path.exists(EXPENSES_FILE):
+        print("No expenses recorded yet.")
+        return
+    with open(EXPENSES_FILE, "r") as file:
+        reader = csv.reader(file)
+        next(reader)  # Skip header
+        print("Date       | Category     | Amount   | Description")
+        print("-" * 50)
+        for row in reader:
+            print(f"{row[0]:<10} | {row[1]:<12} | {row[2]:<8} | {row[3]}")
+
+def track_budget(budget):
+    if not os.path.exists(EXPENSES_FILE):
+        print("No expenses recorded yet.")
+        return
+    total_expenses = 0
+    with open(EXPENSES_FILE, "r") as file:
+        reader = csv.reader(file)
+        next(reader)  # Skip header
+        for row in reader:
+            total_expenses += float(row[2])
+    if total_expenses > budget:
+        print(f"Warning: You have exceeded your budget by ${total_expenses - budget:.2f}!")
+    else:
+        print(f"You have ${budget - total_expenses:.2f} remaining in your budget.")
+
+def main():
+    initialize_files()
+    print("Welcome to the Task and Budget Manager!")
+    user = None
+    budget = 0
+    while True:
+        if not user:
+            print("\n1. Register\n2. Login\n3. Exit")
+            choice = input("Enter your choice: ")
+            if choice == "1":
+                register()
+            elif choice == "2":
+                user = login()
+            elif choice == "3":
+                print("Goodbye!")
+                break
+            else:
+                print("Invalid choice. Please try again.")
+        else:
+            print("\n1. Add Task\n2. View Tasks\n3. Mark Task as Completed\n4. Delete Task\n5. Set Budget\n6. Add Expense\n7. View Expenses\n8. Track Budget\n9. Logout")
+            choice = input("Enter your choice: ")
+            if choice == "1":
+                add_task(user)
+            elif choice == "2":
+                view_tasks(user)
+            elif choice == "3":
+                mark_task_completed(user)
+            elif choice == "4":
+                delete_task(user)
+            elif choice == "5":
+                budget = set_budget()
+            elif choice == "6":
+                add_expense()
+            elif choice == "7":
+                view_expenses()
+            elif choice == "8":
+                track_budget(budget)
+            elif choice == "9":
+                user = None
+                print("Logged out successfully.")
+            else:
+                print("Invalid choice. Please try again.")
+
+if __name__ == "__main__":
+    main()
